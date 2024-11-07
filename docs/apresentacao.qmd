@@ -1,0 +1,180 @@
+---
+title: "Busca semântica com PGVector"
+author: "José de Jesus Filho"
+format: revealjs
+execute:
+  echo: false
+---
+
+## Métodos de busca
+```{r}
+library(tidyverse)
+library(gt)
+```
+
+### Determinísticos
+
+- Busca exata
+
+- Busca por expressões regulares
+
+- Busca fuzzy
+
+- Busca por índice invertido, ex. FTS
+
+### Probabilísticas 
+- Busca semântica com embeddings
+
+## Embeddings
+
+Embeddings são representações numéricas de dados complexos, como palavras, frases, imagens ou até mesmo objetos mais abstratos, em um espaço vetorial de dimensão finita. Imagine transformar um texto inteiro em um único ponto em um gráfico multidimensional! 
+
+
+## Comparação entre busca com embeddings e FTS
+```{r}
+# Criando os dados da tabela
+caracteristicas <- c("Compreensão Contextual", "Desempenho para Consultas Simples", 
+                     "Escalabilidade", "Resiliência a Erros de Digitação", 
+                     "Complexidade de Implementação")
+
+busca_semantica <- c("Alta, permite capturar sinônimos e variações contextuais.", 
+                     "Pode ser mais lento, especialmente em grandes volumes de dados.", 
+                     "Menos eficiente para grandes volumes de dados sem otimizações adicionais.", 
+                     "Alta, consegue lidar bem com erros de digitação e variações linguísticas.", 
+                     "Mais complexa, requer modelos pré-treinados e integração de técnicas de deep learning.")
+
+busca_indice_invertido <- c("Baixa, depende de correspondência exata de termos.", 
+                             "Extremamente rápido e eficiente para consultas simples.", 
+                             "Muito escalável e eficiente em grandes bases de dados.", 
+                             "Baixa, exige correspondência exata de termos.", 
+                             "Simples, baseado em estruturas de dados como tabelas e listas invertidas.")
+
+# Criando o dataframe
+comparacao_buscas <- data.frame(
+  Característica = caracteristicas,
+  Embeddings = busca_semantica,
+  `FTS` = busca_indice_invertido
+)
+
+gt(comparacao_buscas)
+
+```
+
+## Embeddings: Intuição
+
+```{r}
+df <- tibble(nome = c("avô","homem","adulto","mulher","menino","criança","menina","bebê"),
+       sexo = c(1,1,5,9,1,5,9,5),
+       idade = c(9,7,7,7,2,2,2,1))
+
+ggplot(df, aes(x = sexo, y = idade)) +
+     geom_point(aes(color = nome), size = 2)+
+     geom_text(aes(label = nome), vjust =-.5)+
+     guides(color = "none")+
+     theme_bw()
+```
+
+
+## Escolha de embeddings:
+
+- Baseados em co-ocorrência de palavras: Word2Vec e Glove
+
+- Baseados em transformers:
+  - LLMs: OPENAI, LLAMA 3, Gemini etc
+
+- Baseados em SLMs: Bert, T5-Small, Phy etc
+
+## Exemplos: gerando embeddings
+
+```python
+from sentence_transformers import SentenceTransformer
+from numpy import dot
+from numpy.linalg import norm
+
+sentences = ["Quantos anos você tem?", "Qual é a sua idade?","Qual é a sua altura?"]
+
+model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+embeddings = model.encode(sentences)
+print(embeddings)
+
+```
+## Exemplos: imprimindo embeddings
+
+```python
+[[ 0.33536017  0.3328172   0.15441135 ...  0.07078307  0.03826867
+  -0.4294156 ]
+ [ 0.21777073  0.4381344   0.19786459 ... -0.00422842  0.06903458
+  -0.35286456]
+ [ 0.46377227  0.35601363  0.05980622 ... -0.05356395 -0.40202102
+  -0.05872046]]
+```
+
+## Exemplos: Calculando o cosseno
+
+```python
+vetor_anos = embeddings[0] ## Quantos anos você tem?
+vetor_idade= embeddings[1] ## Qual é a sua idade?
+vetor_altura = embeddings[2] ## Qual é a sua altura
+
+print(dot(vetor_anos, vetor_idade)/(norm(vetor_anos)*norm(vetor_idade)))
+```
+
+```{r}
+0.96260977
+```
+
+## Exemplos: Calculando a distância
+
+```python
+print(dot(vetor_idade, vetor_altura)/(norm(vetor_idade)*norm(vetor_altura)))
+```
+
+```{r}
+0.47227994
+```
+
+## PGVector
+
+PGVector é uma extensão para o PostgreSQL que permite armazenar e realizar operações de similaridade em vetores de alta dimensão diretamente no banco de dados. 
+
+## Com PGVector: Criando a extensão
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+## PGVector: trechos (chunks)
+
+É comum dividir textos grandes em trechos, ou chunks, menores antes de gerar os embeddings. Especialmente para busca semântica, trechos de de 100 a 300 palavras confinam os consultas em contextos menores, o que pode melhorar a acurácia.
+
+
+## PGVector: Tabela de documentos
+
+```sql
+CREATE TABLE documentos (
+    id int PRIMARY KEY,
+    titulo text NOT NULL,
+    conteudo TEXT NOT NULL;
+
+```
+
+## PGVector: Cria tabela de embeddings
+
+```sql
+CREATE TABLE documentos_embeddings (
+    id int PRIMARY KEY,
+    id_documento INTEGER REFERENCES documentos(id),
+    chunk text
+    embedding vector(384) NOT NULL
+```
+
+## PGVector realiza a busca
+
+```sql
+SELECT id, id_documento, chunk, 1 - (embedding <=> '[3,1,2]') AS distancia
+FROM documentos_embeddings
+INNER JOIN
+ORDER BY embedding <-> '[3,1,2]' 
+LIMIT 5;
+```
+
