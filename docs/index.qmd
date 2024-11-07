@@ -138,8 +138,6 @@ print(dot(vetor_idade, vetor_altura)/(norm(vetor_idade)*norm(vetor_altura)))
 
 PGVector é uma extensão para o PostgreSQL que permite armazenar e realizar operações de similaridade em vetores de alta dimensão diretamente no banco de dados. 
 
-## Com PGVector: Criando a extensão
-
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
