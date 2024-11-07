@@ -2,6 +2,7 @@
 title: "Busca semântica com PGVector"
 author: "José de Jesus Filho"
 format: revealjs
+editor: visual
 execute:
   echo: false
 ---
